@@ -2,8 +2,8 @@ package vagrant
 
 import (
 	"bufio"
-	"bytes"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/exec"
@@ -177,16 +177,15 @@ func (d *Vagrant_2_2_Driver) Version() (string, error) {
 }
 
 func (d *Vagrant_2_2_Driver) prefixingLogger(prefix string) io.Writer {
-	pipeReader, pipeWriter = io.Pipe()
+	pipeReader, pipeWriter := io.Pipe()
 	scanner := bufio.NewScanner(pipeReader)
-	scanner.SplitFunc(bufio.ScanLines)
 
 	go func() {
 		for scanner.Scan() {
-			readLine := strings.TrimSpace(string(scanner.getBytes()))
+			readLine := strings.TrimSpace(string(scanner.Bytes()))
 			log.Printf("%s %s", prefix, readLine)
 		}
-	}
+	}()
 
 	return pipeWriter
 }
@@ -196,17 +195,15 @@ func (d *Vagrant_2_2_Driver) vagrantCmd(args ...string) (string, string, error) 
 	log.Printf("Calling Vagrant CLI: %#v", args)
 	cmd := exec.Command(d.vagrantBinary, args...)
 	cmd.Env = append(os.Environ(), fmt.Sprintf("VAGRANT_CWD=%s", d.VagrantCWD))
-	cmd.Stdout = prefixingLogger("[vagrant driver] stdout:")
-	cmd.Stderr = prefixingLogger("[vagrant driver] stderr:")
+	cmd.Stdout = d.prefixingLogger("[vagrant driver] stdout:")
+	cmd.Stderr = d.prefixingLogger("[vagrant driver] stderr:")
 	cmd.Stdin = os.Stdin
 
 	err := cmd.Run()
 
-	stderrString := strings.TrimSpace(stderr.String())
-
 	if _, ok := err.(*exec.ExitError); ok {
-		err = fmt.Errorf("Vagrant error: %s", stderrString)
+		err = fmt.Errorf("Vagrant error")
 	}
 
-	return stdoutString, stderrString, err
+	return "", "", err
 }
